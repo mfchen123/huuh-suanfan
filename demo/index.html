@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>国标麻将算番器</title>
+<style>
+:root {
+    --bg: #0a3d2e;              /* 麻将桌绿 */
+    --bg-deep: #072a20;
+    --felt: #0f4a37;
+    --bg-card: #1a2028;
+    --tile-bg: #fafaf5;
+    --border: #2d6a4f;
+    --text: #f0f7f4;
+    --text-dim: #a8c0b5;
+    --accent: #d4af37;          /* 金 */
+    --accent-dim: #8a7028;
+    --red: #c53030;
+    --shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: radial-gradient(ellipse at top, var(--felt) 0%, var(--bg-deep) 100%);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 16px;
+    line-height: 1.5;
+    user-select: none;
+}
+.container { max-width: 1100px; margin: 0 auto; }
+
+header { text-align: center; margin-bottom: 18px; }
+header h1 {
+    font-size: 1.8em; color: var(--accent);
+    letter-spacing: 3px; text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+header p { color: var(--text-dim); font-size: 0.85em; }
+
+.card {
+    background: rgba(7,42,32,0.85);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 20px;
+    margin-bottom: 14px;
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(4px);
+}
+.card-title {
+    font-size: 0.85em; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 1.5px;
+    margin-bottom: 10px; display: flex; align-items: center; gap: 8px;
+}
+.card-title .count {
+    background: var(--accent); color: #1a1a1a;
+    border-radius: 10px; padding: 1px 9px;
+    font-size: 0.85em; font-weight: 700;
+}
+
+/* ========== 麻将牌 (图片) ========== */
+/* 牌池中的牌: img 直接作为 tile */
+.tile {
+    width: 46px; height: auto;
+    display: inline-block; vertical-align: top;
+    cursor: pointer;
+    transition: transform 0.12s, filter 0.12s;
+    margin: 2px;
+    border-radius: 6px;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+}
+.tile:hover { transform: translateY(-5px); filter: drop-shadow(0 6px 8px rgba(0,0,0,0.5)) brightness(1.08); }
+.tile.depleted { opacity: 0.2; cursor: not-allowed; filter: grayscale(1); }
+.tile.depleted:hover { transform: none; filter: grayscale(1); }
+
+/* 手牌区: 用 wrap div 包裹 img, 支持 selected 态和删除按钮 */
+.tile-wrap {
+    position: relative; display: inline-block; vertical-align: top;
+    margin: 2px 3px;
+    cursor: pointer;
+    transition: transform 0.12s;
+}
+.tile-wrap:hover { transform: translateY(-4px); }
+.tile-img {
+    width: 52px; height: auto; display: block;
+    border-radius: 7px;
+    filter: drop-shadow(0 3px 5px rgba(0,0,0,0.45));
+}
+.hand-tile.selected .tile-img {
+    filter: drop-shadow(0 0 8px var(--accent)) drop-shadow(0 3px 5px rgba(0,0,0,0.45)) brightness(1.1);
+}
+.hand-tile.selected::after {
+    content: ''; position: absolute; inset: -4px;
+    border: 3px solid var(--accent); border-radius: 9px;
+    pointer-events: none;
+    box-shadow: 0 0 12px rgba(212,175,55,0.6);
+}
+.remove-x {
+    position: absolute; top: -7px; right: -7px;
+    width: 20px; height: 20px;
+    background: var(--red); color: #fff;
+    border-radius: 50%; font-size: 14px; line-height: 20px;
+    text-align: center; cursor: pointer;
+    opacity: 0; transition: opacity 0.15s;
+    z-index: 3; font-weight: 700;
+}
+.tile-wrap:hover .remove-x { opacity: 1; }
+
+/* 副露组里的牌 */
+.meld-tile { width: 44px; }
+
+/* ========== 牌池 ========== */
+.suit-sep { display: inline-block; width: 12px; }
+
+/* ========== 手牌组合区 ========== */
+.hand-zone { min-height: 80px; display: flex; flex-wrap: wrap; gap: 4px; align-items: flex-end; }
+.hand-empty-hint {
+    color: var(--text-dim); font-style: italic;
+    padding: 20px; width: 100%; text-align: center;
+}
+
+.meld-group {
+    display: inline-flex; gap: 2px; padding: 4px 6px;
+    background: rgba(212,175,55,0.08);
+    border: 1px dashed var(--accent-dim);
+    border-radius: 8px; margin: 2px;
+    position: relative; align-items: flex-end;
+}
+.meld-group .meld-tag {
+    position: absolute; top: -10px; left: 50%;
+    transform: translateX(-50%);
+    background: var(--accent); color: #1a1a1a;
+    font-size: 0.7em; padding: 1px 7px;
+    border-radius: 8px; white-space: nowrap;
+    font-weight: 600;
+}
+.meld-group .meld-del {
+    position: absolute; top: -8px; right: -8px;
+    width: 18px; height: 18px; background: var(--red); color: #fff;
+    border-radius: 50%; font-size: 12px; line-height: 18px;
+    text-align: center; cursor: pointer; z-index: 3;
+}
+
+/* 和牌张分隔 */
+.win-sep {
+    display: inline-block; width: 2px; height: 62px;
+    background: var(--red); margin: 0 8px;
+    border-radius: 1px; vertical-align: top;
+    position: relative;
+}
+.win-sep::after {
+    content: '和'; position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%,-50%);
+    background: var(--red); color: #fff;
+    font-size: 0.7em; padding: 2px 4px; border-radius: 4px;
+    white-space: nowrap;
+}
+
+/* ========== 操作按钮 ========== */
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.btn {
+    padding: 9px 18px; border: none; border-radius: 8px;
+    font-size: 0.95em; font-weight: 600; cursor: pointer;
+    transition: all 0.12s; font-family: inherit;
+}
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-meld { background: #2d6a4f; color: var(--text); }
+.btn-meld:hover:not(:disabled) { background: #40916c; }
+.btn-meld.active { background: var(--accent); color: #1a1a1a; box-shadow: 0 0 0 2px var(--accent); }
+.btn-primary { background: var(--accent); color: #1a1a1a; flex: 1; min-width: 140px; }
+.btn-primary:hover:not(:disabled) { background: #e6c14a; }
+.btn-danger { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+.btn-danger:hover:not(:disabled) { background: rgba(197,48,48,0.2); color: #fff; }
+
+.hint-bar {
+    font-size: 0.85em; color: var(--text-dim);
+    margin-top: 10px; min-height: 1.2em;
+}
+.hint-bar.error { color: #fc8181; }
+.hint-bar.warn { color: var(--accent); }
+
+/* ========== 选项 ========== */
+.options { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.option-group { display: flex; flex-direction: column; gap: 4px; }
+.option-group label { font-size: 0.75em; color: var(--text-dim); }
+.option-group select {
+    background: var(--bg-deep); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 7px 8px;
+    font-size: 0.9em; cursor: pointer; font-family: inherit;
+}
+
+/* ========== 结果 ========== */
+.result { display: none; }
+.result.show { display: block; }
+.result-points {
+    font-size: 2.4em; font-weight: 800; color: var(--accent);
+    line-height: 1; display: inline-block;
+}
+.result-points .unit { font-size: 0.35em; color: var(--text-dim); margin-left: 4px; }
+.result-normalized {
+    font-family: monospace; background: var(--bg-deep);
+    padding: 2px 8px; border-radius: 4px; color: var(--accent);
+    font-size: 0.9em;
+}
+.fan-table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+.fan-table th {
+    text-align: left; color: var(--text-dim);
+    font-size: 0.78em; text-transform: uppercase; letter-spacing: 1px;
+    padding: 7px 10px; border-bottom: 1px solid var(--border);
+}
+.fan-table td { padding: 9px 10px; border-bottom: 1px solid rgba(45,106,79,0.4); }
+.fan-table tr:last-child td { border-bottom: none; }
+.fan-table .fan-name { font-weight: 600; }
+.fan-table .fan-value { color: var(--accent); font-family: monospace; }
+
+.score-box {
+    background: var(--bg-deep); border-radius: 8px;
+    padding: 12px 16px; margin-top: 12px;
+    border-left: 3px solid var(--accent);
+}
+.score-box h4 { color: var(--accent); margin-bottom: 7px; font-size: 0.9em; }
+.score-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap: 6px; font-size: 0.88em; }
+.score-item { display: flex; justify-content: space-between; }
+.score-item .label { color: var(--text-dim); }
+.score-item .val { font-weight: 600; font-family: monospace; color: var(--accent); }
+
+.error-box {
+    background: rgba(197,48,48,0.15); border: 1px solid var(--red);
+    border-radius: 8px; padding: 14px 18px; color: #fca5a5;
+    display: none;
+}
+.error-box.show { display: block; }
+
+footer { text-align: center; color: var(--text-dim); font-size: 0.78em; margin-top: 18px; }
+@media (max-width: 600px) {
+    .tile { width: 38px; }
+    .tile-img { width: 42px; }
+    .meld-tile { width: 36px; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>🀄 国标麻将算番器</h1>
+        <p>点击下方牌池组合你的手牌 · 支持 81 番种</p>
+    </header>
+
+    <!-- 牌池 -->
+    <div class="card">
+        <div class="card-title">牌池 · 点击添加到手牌</div>
+        <div id="tilePool"></div>
+    </div>
+
+    <!-- 手牌组合区 -->
+    <div class="card">
+        <div class="card-title">
+            我的手牌 <span class="count" id="handCount">0/14</span>
+        </div>
+        <div class="hand-zone" id="handZone">
+            <div class="hand-empty-hint">点击上方牌池添加手牌。共需 14 张(13 + 1 张和牌)。</div>
+        </div>
+        <div class="actions">
+            <button class="btn btn-meld" id="btnChow">吃</button>
+            <button class="btn btn-meld" id="btnPung">碰</button>
+            <button class="btn btn-meld" id="btnKong">杠</button>
+            <span style="flex:1"></span>
+            <button class="btn btn-primary" id="calcBtn">🎲 算番</button>
+            <button class="btn btn-danger" id="clearBtn">清空</button>
+        </div>
+        <div class="hint-bar" id="hintBar">提示:先在牌池点牌,凑出 14 张后点「算番」。最后一张牌视为和牌张。</div>
+    </div>
+
+    <!-- 选项 -->
+    <div class="card">
+        <div class="card-title">和牌方式与场况</div>
+        <div class="options">
+            <div class="option-group">
+                <label>和牌方式</label>
+                <select id="winMode">
+                    <option value="discard">点和(放铳)</option>
+                    <option value="self">自摸</option>
+                    <option value="self,kong">杠上开花</option>
+                    <option value="self,wall">妙手回春(海底自摸)</option>
+                    <option value="discard,wall">海底捞月(海底点)</option>
+                    <option value="discard,kong">抢杠和</option>
+                    <option value="self,initial">天和(庄家起手)</option>
+                    <option value="discard,initial">地和(闲家起手点)</option>
+                    <option value="discard,last">和绝张</option>
+                </select>
+            </div>
+            <div class="option-group">
+                <label>圈风</label>
+                <select id="prevalent"><option>东</option><option>南</option><option>西</option><option>北</option></select>
+            </div>
+            <div class="option-group">
+                <label>门风</label>
+                <select id="seat"><option>东</option><option>南</option><option>西</option><option>北</option></select>
+            </div>
+            <div class="option-group">
+                <label>花牌数</label>
+                <select id="flower"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select>
+            </div>
+        </div>
+    </div>
+
+    <!-- 错误 -->
+    <div class="card error-box" id="errorBox"></div>
+
+    <!-- 结果 -->
+    <div class="card result" id="resultBox">
+        <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;padding-bottom:12px;border-bottom:1px solid var(--border);margin-bottom:6px;">
+            <div class="result-points"><span id="points">0</span><span class="unit">番</span></div>
+            <div style="color:var(--text-dim);font-size:0.9em;">
+                规范化: <span class="result-normalized" id="normalized"></span>
+            </div>
+        </div>
+        <table class="fan-table">
+            <thead><tr><th>番种</th><th>番值</th><th>次数</th><th>小计</th></tr></thead>
+            <tbody id="fanBody"></tbody>
+        </table>
+        <div class="score-box">
+            <h4>💰 计分明细</h4>
+            <div class="score-grid" id="scoreGrid"></div>
+        </div>
+    </div>
+
+    <footer>算法: summerinsects/mahjong-algorithm · 点击牌的右上角 × 删除 · 副露组可整体删除</footer>
+</div>
+
+<script>
+// ============ 牌的定义 ============
+// 编码同 C++ 库: 万 0x11-0x19, 条 0x21-0x29, 饼 0x31-0x39, 字 0x41-0x47
+const CN_NUM = ['','一','二','三','四','五','六','七','八','九'];
+const WINDS = {0x41:'东',0x42:'南',0x43:'西',0x44:'北'};
+const DRAGONS = {0x45:'中',0x46:'发',0x47:'白'};
+// 所有 34 种牌
+const ALL_TILES = [];
+for (let s=1;s<=3;s++) for (let r=1;r<=9;r++) ALL_TILES.push(s<<4 | r);
+[0x41,0x42,0x43,0x44,0x45,0x46,0x47].forEach(t=>ALL_TILES.push(t));
+
+// 字符串编码用的字符
+const SUIT_CHAR = {1:'m',2:'s',3:'p'};
+const HONOR_CHAR = {0x41:'E',0x42:'S',0x43:'W',0x44:'N',0x45:'C',0x46:'F',0x47:'P'};
+
+// ============ 麻将牌图片 ============
+// 牌代码 -> 图片文件名映射 (FluffyStuff/riichi-mahjong-tiles, CC0)
+// 万=Man 条=Sou 饼=Pin, 字牌: 东=Ton 南=Nan 西=Shaa 北=Pei 中=Chun 发=Hatsu 白=Haku
+function tileImageURL(code) {
+    const suit = code >> 4, rank = code & 0xF;
+    let name;
+    if (suit === 1) name = `Man${rank}`;
+    else if (suit === 2) name = `Sou${rank}`;
+    else if (suit === 3) name = `Pin${rank}`;
+    else {
+        const honors = {0x41:'Ton',0x42:'Nan',0x43:'Shaa',0x44:'Pei',0x45:'Chun',0x46:'Hatsu',0x47:'Haku'};
+        name = honors[code];
+    }
+    return `assets/tiles/${name}.svg`;
+}
+
+function tileHTML(code, extraClass = '') {
+    // extraClass: 额外类名, e.g. 'hand-tile'
+    return `<img class="tile-img ${extraClass}" data-code="${code}" src="${tileImageURL(code)}" alt="${tileLabel(code)}" draggable="false">`;
+}
+
+// 牌的可读标签(alt用)
+function tileLabel(code) {
+    const suit = code >> 4, rank = code & 0xF;
+    if (suit <= 3) return CN_NUM[rank] + ['','万','条','饼'][suit];
+    return {...WINDS, ...DRAGONS}[code];
+}
+
+// ============ 状态 ============
+// hand: 数组, 每项 {code, id, melded:false|true, meldType, offer}
+// standing(立牌) 的 melded=false; 副露的 melded=true
+// winTileIndex: 手牌数组中和牌张的索引(立牌中,可选)
+let hand = [];          // 全部条目(立牌 + 副露),按添加顺序
+let nextId = 1;
+let selectedIds = new Set();   // 选中的立牌(用于吃碰杠)
+let activeMeldBtn = null;      // 当前激活的副露按钮
+
+// ============ 渲染: 牌池 ============
+function renderPool() {
+    const pool = document.getElementById('tilePool');
+    // 统计手牌中每种牌的数量
+    const used = {};
+    hand.forEach(h => used[h.code] = (used[h.code]||0) + 1);
+    let html = '';
+    let lastSuit = -1;
+    ALL_TILES.forEach(code => {
+        const suit = code >> 4;
+        if (suit !== lastSuit && lastSuit !== -1) html += '<span class="suit-sep"></span>';
+        lastSuit = suit;
+        const u = used[code] || 0;
+        const depleted = u >= 4 ? 'depleted' : '';
+        html += `<img class="tile ${depleted}" data-code="${code}" src="${tileImageURL(code)}" alt="${tileLabel(code)}" draggable="false">`;
+    });
+    pool.innerHTML = html;
+    pool.querySelectorAll('.tile').forEach(el => {
+        el.addEventListener('click', () => {
+            if (el.classList.contains('depleted')) return;
+            addTile(parseInt(el.dataset.code));
+        });
+    });
+}
+
+// ============ 渲染: 手牌区 ============
+function renderHand() {
+    const zone = document.getElementById('handZone');
+    // 统计: 立牌数, 副露数, 总张数
+    let standing = hand.filter(h => !h.melded);
+    let melds = hand.filter(h => h.melded);
+    let standingTiles = standing.length;
+    let meldCount = melds.length / 3 + melds.filter(m=>m.meldType==='kong').length;
+    // 实际: 每组副露算 3 张(杠算一组但占4张牌). 立牌 + 3*组数 = 13 时为合法和牌前状态
+    let meldGroups = groupMelds(melds);
+    let effectiveTiles = standingTiles + 3 * meldGroups.length;
+
+    if (hand.length === 0) {
+        zone.innerHTML = '<div class="hand-empty-hint">点击上方牌池添加手牌。共需 14 张(13 + 1 张和牌)。</div>';
+    } else {
+        let html = '';
+        // 立牌区
+        standing.forEach((h, i) => {
+            const sel = selectedIds.has(h.id) ? 'selected' : '';
+            html += `<div class="tile-wrap hand-tile ${sel}" data-id="${h.id}">
+                <img class="tile-img" src="${tileImageURL(h.code)}" alt="${tileLabel(h.code)}" draggable="false">
+                <div class="remove-x" data-remove="${h.id}">×</div>
+            </div>`;
+        });
+        // 副露组
+        meldGroups.forEach((g, gi) => {
+            const tilesHtml = g.tiles.map(t => `<img class="tile-img meld-tile" src="${tileImageURL(t.code)}" alt="${tileLabel(t.code)}" draggable="false">`).join('');
+            const tag = g.type === 'kong' ? '杠' : (g.type==='pung'?'碰':'吃');
+            html += `<div class="meld-group" data-meld="${gi}">
+                <div class="meld-tag">${tag}</div>
+                ${tilesHtml}
+                <div class="meld-del" data-melddel="${gi}">×</div>
+            </div>`;
+        });
+        zone.innerHTML = html;
+        // 绑事件
+        zone.querySelectorAll('.hand-tile').forEach(el => {
+            el.addEventListener('click', e => {
+                if (e.target.classList.contains('remove-x')) return;
+                const wrap = e.currentTarget;
+                toggleSelect(parseInt(wrap.dataset.id));
+            });
+        });
+        zone.querySelectorAll('[data-remove]').forEach(el => {
+            el.addEventListener('click', e => {
+                e.stopPropagation();
+                removeTile(parseInt(el.dataset.remove));
+            });
+        });
+        zone.querySelectorAll('[data-melddel]').forEach(el => {
+            el.addEventListener('click', e => {
+                e.stopPropagation();
+                removeMeldGroup(parseInt(el.dataset.melddel));
+            });
+        });
+    }
+
+    // 更新计数
+    document.getElementById('handCount').textContent = effectiveTiles + '/14';
+    updateHints(effectiveTiles);
+    updateMeldButtons();
+}
+
+function groupMelds(meldEntries) {
+    // meldEntries 同一副露的连续. 按 meldGroupId 分组
+    const groups = {};
+    meldEntries.forEach(m => {
+        if (!groups[m.meldGroupId]) groups[m.meldGroupId] = {type: m.meldType, tiles: []};
+        groups[m.meldGroupId].tiles.push(m);
+    });
+    return Object.values(groups);
+}
+
+// ============ 操作 ============
+function addTile(code) {
+    // 检查总数
+    let standing = hand.filter(h=>!h.melded).length;
+    let meldGroups = groupMelds(hand.filter(h=>h.melded)).length;
+    let eff = standing + 3*meldGroups;
+    if (eff >= 14) { setHint('手牌已满 14 张,如需修改请先删除','error'); return; }
+    hand.push({code, id: nextId++, melded: false});
+    renderAll();
+}
+
+function removeTile(id) {
+    hand = hand.filter(h => h.id !== id);
+    selectedIds.delete(id);
+    renderAll();
+}
+
+function toggleSelect(id) {
+    if (selectedIds.has(id)) selectedIds.delete(id);
+    else selectedIds.add(id);
+    renderHand();
+    updateMeldButtons();
+}
+
+function removeMeldGroup(gi) {
+    const groups = groupMelds(hand.filter(h=>h.melded));
+    const target = groups[gi];
+    const idsToRemove = new Set(target.tiles.map(t=>t.id));
+    hand = hand.filter(h => !idsToRemove.has(h.id));
+    renderAll();
+}
+
+// 副露按钮: 切换激活态, 选中正确数量时确认
+function setMeldMode(type) {
+    if (activeMeldBtn === type) {
+        // 再次点击: 尝试确认
+        confirmMeld(type);
+        return;
+    }
+    activeMeldBtn = type;
+    selectedIds.clear();
+    renderHand();
+    updateMeldButtons();
+    const need = type === 'kong' ? 4 : 3;
+    setHint(`「${type==='chow'?'吃':type==='pung'?'碰':'杠'}」模式: 请在手牌中选中 ${need} 张同组的牌,再点一次按钮确认`, 'warn');
+}
+
+function updateMeldButtons() {
+    ['chow','pung','kong'].forEach(type => {
+        document.getElementById('btn'+type.charAt(0).toUpperCase()+type.slice(1))
+            .classList.toggle('active', activeMeldBtn === type);
+    });
+}
+
+function confirmMeld(type) {
+    const selected = hand.filter(h => selectedIds.has(h.id));
+    const need = type === 'kong' ? 4 : 3;
+    if (selected.length !== need) {
+        setHint(`${type==='chow'?'吃':type==='pung'?'碰':'杠'}需要选中 ${need} 张牌,当前选中 ${selected.length} 张`, 'error');
+        return;
+    }
+    // 校验合法性
+    const codes = selected.map(s=>s.code).sort((a,b)=>a-b);
+    let ok = false;
+    if (type === 'pung' || type === 'kong') {
+        // 同种牌
+        ok = codes.every(c => c === codes[0]);
+    } else if (type === 'chow') {
+        // 同花色连续3张
+        const suit = codes[0] >> 4;
+        if (suit >= 4) { setHint('字牌不能吃', 'error'); return; }
+        if (codes.every(c => (c>>4)===suit)) {
+            const ranks = codes.map(c=>c&0xF).sort((a,b)=>a-b);
+            ok = ranks[1]===ranks[0]+1 && ranks[2]===ranks[1]+1;
+        }
+    }
+    if (!ok) {
+        setHint('选中的牌不构成合法的' + (type==='chow'?'顺子':type==='pung'?'刻子':'杠'), 'error');
+        return;
+    }
+    // 转换: 这些牌变为 melded, 同组
+    const gid = nextId++;
+    selected.forEach(s => {
+        s.melded = true;
+        s.meldType = type;
+        s.meldGroupId = gid;
+    });
+    selectedIds.clear();
+    activeMeldBtn = null;
+    setHint('已组成副露', '');
+    renderAll();
+}
+
+// ============ 字符串生成 ============
+function handToString() {
+    // 库的格式: 副露用 [xxx], 立牌直接列出. 最后一张立牌(数组里最后一个)是和牌张
+    // 规则: 立牌数 + 3*副露组数 = 13, 然后和牌张单独写
+    // 所以如果有副露, 立牌数 = 13 - 3*组数, 再 +1 和牌张 = 14 - 3*组数
+    let standing = hand.filter(h=>!h.melded);
+    let melds = hand.filter(h=>h.melded);
+    let meldGroups = groupMelds(melds);
+
+    // 校验张数: standing 应 = 14 - 3*组数
+    const expected = 14 - 3 * meldGroups.length;
+    if (standing.length !== expected) {
+        return {error: `立牌张数不对: 当前 ${standing.length} 张, 应为 ${expected} 张 (有 ${meldGroups.length} 组副露)`};
+    }
+
+    // 排序立牌
+    const sorted = [...standing].sort((a,b)=>a.code-b.code);
+    // 和牌张 = 最后添加的那张? 我们约定: 立牌数组中最后一个(id最大)的和牌张
+    // 更直观: 让用户最后选的那张(最大id)作为和牌张
+    let winTile = sorted[sorted.length-1];
+
+    let str = '';
+    // 副露先写。注意: 库的格式是 [牌+来源数字], 无逗号!
+    // 来源: 1=上家 2=对家 3=下家; 杠默认0=暗杠, 明杠1, 加杠5/6/7
+    for (const g of meldGroups) {
+        const codes = g.tiles.map(t=>t.code).sort((a,b)=>a-b);
+        let inside;
+        if (g.type === 'kong') {
+            // 杠: 默认暗杠 [XXXX], 不带来源数字
+            inside = tileToText(codes[0]).repeat(4);
+        } else if (g.type === 'pung') {
+            // 碰: 默认上家供 [XXX1]
+            inside = tileToText(codes[0]).repeat(3) + '1';
+        } else { // chow
+            // 吃: 3张顺子 + 来源1 (第几张是上家供的)
+            inside = codes.map(c=>tileToText(c)).join('') + '1';
+        }
+        str += '[' + inside + ']';
+    }
+    // 立牌: 把同花色的合并
+    // 简单做法: 按花色分组
+    const bySuit = {};
+    sorted.forEach(t => {
+        const suit = t.code >> 4;
+        if (!bySuit[suit]) bySuit[suit] = [];
+        bySuit[suit].push(t);
+    });
+    [1,2,3,4].forEach(suit => {
+        if (!bySuit[suit]) return;
+        bySuit[suit].forEach(t => {
+            str += tileToText(t.code);
+        });
+    });
+    // 和牌张单独(如果立牌已包含它, 库要求重复一次)
+    // 库格式: 立牌含和牌张的话, 最后再写一次和牌张
+    str += tileToText(winTile.code);
+    return {str, winTileCode: winTile.code};
+}
+
+function tileToText(code) {
+    const suit = code >> 4, rank = code & 0xF;
+    if (suit <= 3) return String(rank) + SUIT_CHAR[suit];
+    return HONOR_CHAR[code];
+}
+
+// ============ 算番 ============
+async function calculate() {
+    const r = handToString();
+    if (r.error) { setHint(r.error, 'error'); return; }
+    // 询问副露的来源(简化: 默认). 提交
+    const winMode = document.getElementById('winMode').value;
+    const prev = {东:'east',南:'south',西:'west',北:'north'}[document.getElementById('prevalent').value];
+    const seat = {东:'east',南:'south',西:'west',北:'north'}[document.getElementById('seat').value];
+    const flower = document.getElementById('flower').value;
+
+    document.getElementById('errorBox').classList.remove('show');
+    document.getElementById('resultBox').classList.remove('show');
+    setHint('计算中...', '');
+
+    const params = new URLSearchParams({hand: r.str, win: winMode, prevalent: prev, seat: seat, flower});
+    try {
+        const resp = await fetch('/api/calculate?' + params.toString());
+        const data = await resp.json();
+        renderResult(data);
+    } catch(e) {
+        showError('请求失败: ' + e.message);
+    }
+}
+
+function renderResult(data) {
+    if (!data.ok) {
+        showError('❌ ' + (data.error||'未知错误') + (data.normalized? '\n规范化手牌: '+data.normalized : ''));
+        setHint('算番失败: ' + (data.error||''), 'error');
+        return;
+    }
+    document.getElementById('points').textContent = data.points;
+    document.getElementById('normalized').textContent = data.normalized;
+    const body = document.getElementById('fanBody');
+    body.innerHTML = '';
+    if (data.fans.length === 0) {
+        body.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-dim);">无番</td></tr>';
+    } else {
+        const fans = [...data.fans].sort((a,b)=>(b.value*b.count)-(a.value*a.count));
+        for (const f of fans) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td class="fan-name">${f.name}</td><td class="fan-value">${f.value}</td>
+                <td style="color:var(--text-dim);font-family:monospace;">×${f.count}</td>
+                <td class="fan-value">${f.value*f.count}</td>`;
+            body.appendChild(tr);
+        }
+    }
+    const base = data.base_score;
+    document.getElementById('scoreGrid').innerHTML = `
+        <div class="score-item"><span class="label">基本分</span><span class="val">${base}</span></div>
+        <div class="score-item"><span class="label">庄家自摸(3家各付)</span><span class="val">${base}</span></div>
+        <div class="score-item"><span class="label">闲家自摸(庄付)</span><span class="val">${base}</span></div>
+        <div class="score-item"><span class="label">闲家自摸(另2家)</span><span class="val">${base}</span></div>
+        <div class="score-item"><span class="label">点和(放铳者付)</span><span class="val">${2*base}</span></div>`;
+    document.getElementById('resultBox').classList.add('show');
+    setHint(`✓ 算番成功: ${data.points} 番`, '');
+}
+
+function setHint(msg, type) {
+    const bar = document.getElementById('hintBar');
+    bar.textContent = msg;
+    bar.className = 'hint-bar' + (type ? ' '+type : '');
+}
+
+function updateHints(eff) {
+    if (activeMeldBtn) return;  // 副露模式时不覆盖
+    if (eff < 14) {
+        const need = 14 - eff;
+        setHint(`还需 ${need} 张牌`, '');
+    } else if (eff === 14) {
+        setHint('✓ 手牌已满,可点「算番」', '');
+    } else {
+        setHint(`手牌超出 ${eff-14} 张`, 'error');
+    }
+}
+
+function showError(msg) {
+    const box = document.getElementById('errorBox');
+    box.textContent = msg;
+    box.classList.add('show');
+    document.getElementById('resultBox').classList.remove('show');
+}
+
+function renderAll() {
+    renderPool();
+    renderHand();
+}
+
+// 清空
+function clearAll() {
+    hand = []; selectedIds.clear(); activeMeldBtn = null;
+    document.getElementById('errorBox').classList.remove('show');
+    document.getElementById('resultBox').classList.remove('show');
+    renderAll();
+    setHint('已清空', '');
+}
+
+// ============ 初始化 ============
+document.getElementById('btnChow').addEventListener('click', ()=>setMeldMode('chow'));
+document.getElementById('btnPung').addEventListener('click', ()=>setMeldMode('pung'));
+document.getElementById('btnKong').addEventListener('click', ()=>setMeldMode('kong'));
+document.getElementById('calcBtn').addEventListener('click', calculate);
+document.getElementById('clearBtn').addEventListener('click', clearAll);
+
+renderAll();
+</script>
+</body>
+</html>

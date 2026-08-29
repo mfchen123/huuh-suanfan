@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+
+# Node
+node_modules/
+npm-debug.log
+
+# Capacitor / Android 构建产物
+app/android/.gradle/
+app/android/build/
+app/android/app/build/
+app/android/local.properties
+app/android/capacitor-cordova-android-plugins/build/
+app/android/*.iml
+app/android/.idea/
+
+# APK 二进制(通过 GitHub Releases 发布)
+*.apk
+
+# 本地工具目录
+.zcode/
+
+# 日志与临时文件
+*.log
+/tmp/
+mahjong-algorithm/
